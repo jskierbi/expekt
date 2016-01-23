@@ -1,10 +1,17 @@
 package org.jetbrains.spek.console
 
-import org.jetbrains.spek.api.*
-import java.io.*
-import java.lang.reflect.*
-import java.net.*
-import java.util.jar.*
+import org.jetbrains.spek.api.SkippedException
+import org.jetbrains.spek.api.Spek
+import org.jetbrains.spek.api.TestSpekAction
+import org.jetbrains.spek.api.ignored
+import java.io.File
+import java.lang.reflect.AnnotatedElement
+import java.lang.reflect.Method
+import java.net.URI
+import java.net.URL
+import java.net.URLClassLoader
+import java.net.URLDecoder
+import java.util.jar.JarFile
 
 
 public fun getUrlsForPaths(paths: List<String>): List<URL> {
@@ -34,10 +41,10 @@ public fun findClassesInUrls(urls: List<URL>, packageName: String): List<String>
             var jarFilename = URLDecoder.decode(url.getFile()!!, "UTF-8")
             val jarFile = JarFile(jarFilename)
             var jarEntries = jarFile.entries()
-            while (jarEntries.hasMoreElements())  {
+            while (jarEntries.hasMoreElements()) {
                 var entryName = jarEntries.nextElement().getName()
-                if (entryName.startsWith(packageName) && entryName.length > packageName.length +5) {
-                    entryName = entryName.substring(packageName.length,entryName.lastIndexOf('.'))
+                if (entryName.startsWith(packageName) && entryName.length > packageName.length + 5) {
+                    entryName = entryName.substring(packageName.length, entryName.lastIndexOf('.'))
                     names.add(entryName)
                 }
             }
@@ -82,25 +89,50 @@ private fun AnnotatedElement.checkSkipped() {
 }
 
 public data class ExtensionFunctionSpek(val method: Method) : TestSpekAction {
-    override fun description(): String = method.toString()
 
-    override fun iterateGiven(it: (TestGivenAction) -> Unit) {
-        val builder = object : Spek() {
-        }
-        //TODO: assert method signature
-
+    val recordedActions by lazy {
+        val builder = object : Spek() {}
         method.checkSkipped()
         method.invoke(null, builder)
-
-        builder.iterateGiven(it)
+        builder.listGiven()
     }
+
+    override fun description(): String = method.toString()
+
+    override fun listGiven() = recordedActions
+
+    override fun run(action: () -> Unit) {
+        action()
+    }
+
+    //override fun iterateGiven(it: (TestGivenAction) -> Unit) {
+    //    val builder = object : Spek() {
+    //    }
+    //    TODO: assert method signature
+    //
+    //    method.checkSkipped()
+    //    method.invoke(null, builder)
+    //
+    //    builder.listGiven().forEach(it)
+    //}
 }
 
 public data class ClassSpek<T : Spek>(val specificationClass: Class<out T>) : TestSpekAction {
-    override fun description(): String = specificationClass.getName()
+    override fun description(): String = specificationClass.name
 
-    override fun iterateGiven(it: (TestGivenAction) -> Unit) {
+    val recordedActions by lazy {
         specificationClass.checkSkipped()
-        specificationClass.newInstance().iterateGiven(it)
+        specificationClass.newInstance().listGiven()
     }
+
+    override fun listGiven() = recordedActions
+
+    override fun run(action: () -> Unit) {
+        action()
+    }
+
+    //    override fun iterateGiven(it: (TestGivenAction) -> Unit) {
+    //        specificationClass.checkSkipped()
+    //        specificationClass.newInstance().listGiven().forEach(it)
+    //    }
 }

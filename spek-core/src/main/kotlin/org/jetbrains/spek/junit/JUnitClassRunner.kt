@@ -1,12 +1,11 @@
 package org.jetbrains.spek.junit
 
-import org.junit.runner.*
-import org.junit.runners.*
-import org.junit.runner.notification.*
-import kotlin.properties.Delegates
-import java.io.Serializable
-import org.jetbrains.spek.*
 import org.jetbrains.spek.api.*
+import org.junit.runner.Description
+import org.junit.runner.notification.Failure
+import org.junit.runner.notification.RunNotifier
+import org.junit.runners.ParentRunner
+import java.io.Serializable
 
 data class JUnitUniqueId(val id: Int) : Serializable {
     companion object {
@@ -35,7 +34,8 @@ public class JUnitOnRunner<T>(val specificationClass: Class<T>, val given: TestG
     val _children by lazy(LazyThreadSafetyMode.NONE) {
         val result = arrayListOf<TestItAction>()
         try {
-            on.iterateIt { result.add(it) }
+            // on.iterateIt { result.add(it) }
+            on.listIt().forEach { result.add(it) }
         } catch (e: SkippedException) {
         } catch (e: PendingException) {
         }
@@ -63,7 +63,7 @@ public class JUnitOnRunner<T>(val specificationClass: Class<T>, val given: TestG
 
     protected override fun runChild(child: TestItAction?, notifier: RunNotifier?) {
         junitAction(describeChild(child)!!, notifier!!) {
-            child!!.run()
+            on.run {child!!.run {}}
         }
     }
 }
@@ -73,7 +73,8 @@ public class JUnitGivenRunner<T>(val specificationClass: Class<T>, val given: Te
     val _children by lazy(LazyThreadSafetyMode.NONE) {
         val result = arrayListOf<JUnitOnRunner<T>>()
         try {
-            given.iterateOn { result.add(JUnitOnRunner(specificationClass, given, it)) }
+            given.listOn().forEach { result.add(JUnitOnRunner(specificationClass, given, it)) }
+            // given.iterateOn { result.add(JUnitOnRunner(specificationClass, given, it)) }
         } catch (e: SkippedException) {
         } catch (e: PendingException) {
         }
@@ -97,7 +98,7 @@ public class JUnitGivenRunner<T>(val specificationClass: Class<T>, val given: Te
 
     protected override fun runChild(child: JUnitOnRunner<T>?, notifier: RunNotifier?) {
         junitAction(describeChild(child)!!, notifier!!) {
-            child!!.run(notifier)
+            given.run { child!!.run(notifier) }
         }
     }
 }
@@ -111,7 +112,7 @@ public class JUnitClassRunner<T>(val specificationClass: Class<T>) : ParentRunne
         if (Spek::class.java.isAssignableFrom(specificationClass) && !specificationClass.isLocalClass) {
             val spek = specificationClass.newInstance() as Spek
             val result = arrayListOf<JUnitGivenRunner<T>>()
-            spek.iterateGiven { result.add(JUnitGivenRunner(specificationClass, it)) }
+            spek.listGiven().forEach { result.add(JUnitGivenRunner(specificationClass, it)) }
             result
         } else
             arrayListOf()

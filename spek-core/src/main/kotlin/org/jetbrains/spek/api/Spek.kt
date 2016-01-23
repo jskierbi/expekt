@@ -40,7 +40,7 @@ public abstract class Spek : org.jetbrains.spek.api.Specification {
 
     }
 
-//    public fun iterateGiven(it: (org.jetbrains.spek.api.TestGivenAction) -> Unit): Unit = org.jetbrains.spek.api.removingIterator(recordedActions, it)
+    public fun listGiven() = recordedActions
 
     public fun allGiven(): List<org.jetbrains.spek.api.TestGivenAction> = recordedActions
 }
