@@ -23,6 +23,7 @@ public fun getUrlsForPaths(paths: List<String>): List<URL> {
 public fun findClassesInClassPath(packageName: String): List<String> {
     val classLoader = Thread.currentThread().getContextClassLoader()
     val packageUrl = classLoader?.getResource(packageName.replace('.', '/'))
+    // todo js broken -> finding class in class path doesn't work! (glues package to classpath - thus creating non-existing paths)
     return findClassesInUrls(listOf(packageUrl!!), packageName)
 }
 

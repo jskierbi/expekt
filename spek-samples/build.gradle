@@ -1,7 +1,7 @@
 apply plugin: 'application'
 
 mainClassName = 'org.jetbrains.spek.console.ConsoleRunnerKt'
-run { args ".", "org.jetbrains.spek.samples", "-f", "text" }
+run { args "build/classes/main", "org.jetbrains.spek.samples", "-f", "text" }
 
 description = 'Spek Samples'
 
