@@ -56,14 +56,16 @@ public class JUnitOnRunner<T>(val specificationClass: Class<T>, val given: TestG
     override fun getDescription(): Description? = _description
 
     protected override fun describeChild(child: TestItAction?): Description? {
+        println("+++--++ On: describe child | ${child?.description()}")
         return childrenDescriptions.getOrPut(child!!.description(), {
             Description.createSuiteDescription("${child.description()} (${on.description()})", JUnitUniqueId.next())!!
         })
     }
 
     protected override fun runChild(child: TestItAction?, notifier: RunNotifier?) {
+        println("+++--++ On: run It | ${child?.description()}")
         junitAction(describeChild(child)!!, notifier!!) {
-            on.run {child!!.run {}}
+            on.run { child!!.run {} }
         }
     }
 }
@@ -93,10 +95,12 @@ public class JUnitGivenRunner<T>(val specificationClass: Class<T>, val given: Te
     override fun getDescription(): Description? = _description
 
     protected override fun describeChild(child: JUnitOnRunner<T>?): Description? {
+        println("+++-- Given: describe child | ${child?.on?.description()}")
         return child?.description
     }
 
     protected override fun runChild(child: JUnitOnRunner<T>?, notifier: RunNotifier?) {
+        println("+++-- Given: run On | ${child?.on?.description()}")
         junitAction(describeChild(child)!!, notifier!!) {
             given.run { child!!.run(notifier) }
         }
@@ -119,10 +123,12 @@ public class JUnitClassRunner<T>(val specificationClass: Class<T>) : ParentRunne
     }
 
     protected override fun describeChild(child: JUnitGivenRunner<T>?): Description? {
+        println("+++ Suite: describe child | ${child?.given?.description()}")
         return child?.description
     }
 
     protected override fun runChild(child: JUnitGivenRunner<T>?, notifier: RunNotifier?) {
+        println("+++ Suite: run Given | ${child?.given?.description()}")
         junitAction(describeChild(child)!!, notifier!!) {
             child!!.run(notifier)
         }
