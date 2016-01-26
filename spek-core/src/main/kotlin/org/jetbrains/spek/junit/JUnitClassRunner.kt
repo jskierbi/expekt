@@ -1,11 +1,14 @@
 package org.jetbrains.spek.junit
 
-import org.jetbrains.spek.api.*
+import org.jetbrains.spek.api.PendingException
+import org.jetbrains.spek.api.SkippedException
+import org.jetbrains.spek.api.Spek
 import org.junit.runner.Description
 import org.junit.runner.notification.Failure
 import org.junit.runner.notification.RunNotifier
 import org.junit.runners.ParentRunner
 import java.io.Serializable
+import java.util.*
 
 data class JUnitUniqueId(val id: Int) : Serializable {
     companion object {
@@ -29,108 +32,83 @@ public fun junitAction(description: Description, notifier: RunNotifier, action: 
     }
 }
 
-public class JUnitOnRunner<T>(val specificationClass: Class<T>, val given: TestGivenAction, val on: TestOnAction) : ParentRunner<TestItAction>(specificationClass) {
+data class SpekResult(val successful: Boolean = false, val exception: Throwable? = null)
 
-    val _children by lazy(LazyThreadSafetyMode.NONE) {
-        val result = arrayListOf<TestItAction>()
-        try {
-            // on.iterateIt { result.add(it) }
-            on.listIt().forEach { result.add(it) }
-        } catch (e: SkippedException) {
-        } catch (e: PendingException) {
-        }
-        result
+public fun runSpek(testIdHashCode: Int, results: HashMap<Int, SpekResult>, action: () -> Unit) {
+    try {
+        action()
+        results.put(testIdHashCode, SpekResult(successful = true))
+    } catch(e: Throwable) {
+        results.put(testIdHashCode, SpekResult(exception = e))
     }
+}
 
-    val _description by lazy(LazyThreadSafetyMode.NONE) {
-        val desc = Description.createSuiteDescription(on.description(), JUnitUniqueId.next())!!
-        for (item in children) {
-            desc.addChild(describeChild(item))
-        }
-        desc
-    }
-
-    val childrenDescriptions = hashMapOf<String, Description>()
-
-    override fun getChildren(): MutableList<TestItAction> = _children
-    override fun getDescription(): Description? = _description
-
-    protected override fun describeChild(child: TestItAction?): Description? {
-        println("+++--++ On: describe child | ${child?.description()}")
-        return childrenDescriptions.getOrPut(child!!.description(), {
-            Description.createSuiteDescription("${child.description()} (${on.description()})", JUnitUniqueId.next())!!
-        })
-    }
-
-    protected override fun runChild(child: TestItAction?, notifier: RunNotifier?) {
-        println("+++--++ On: run It | ${child?.description()}")
-        junitAction(describeChild(child)!!, notifier!!) {
-            on.run { child!!.run {} }
+public fun evaluateResults(desc: Description?, notifier: RunNotifier?, results: HashMap<Int, SpekResult>) {
+    desc?.children?.forEach { child -> evaluateResults(child, notifier, results) }
+    desc?.apply {
+        val testId = hashCode()
+        val result = results[testId]
+        notifier?.apply {
+            fireTestStarted(desc)
+            when (result?.exception) {
+                is SkippedException -> notifier.fireTestIgnored(desc)
+                is PendingException -> notifier.fireTestIgnored(desc)
+                is Throwable -> notifier.fireTestFailure(Failure(desc, result?.exception))
+            }
+            fireTestFinished(desc)
         }
     }
 }
 
-public class JUnitGivenRunner<T>(val specificationClass: Class<T>, val given: TestGivenAction) : ParentRunner<JUnitOnRunner<T>>(specificationClass) {
-
-    val _children by lazy(LazyThreadSafetyMode.NONE) {
-        val result = arrayListOf<JUnitOnRunner<T>>()
-        try {
-            given.listOn().forEach { result.add(JUnitOnRunner(specificationClass, given, it)) }
-            // given.iterateOn { result.add(JUnitOnRunner(specificationClass, given, it)) }
-        } catch (e: SkippedException) {
-        } catch (e: PendingException) {
-        }
-        result
-    }
-
-    val _description by lazy(LazyThreadSafetyMode.NONE) {
-        val desc = Description.createSuiteDescription(given.description(), JUnitUniqueId.next())!!
-        for (item in children) {
-            desc.addChild(describeChild(item))
-        }
-        desc
-    }
-
-    override fun getChildren(): MutableList<JUnitOnRunner<T>> = _children
-    override fun getDescription(): Description? = _description
-
-    protected override fun describeChild(child: JUnitOnRunner<T>?): Description? {
-        println("+++-- Given: describe child | ${child?.on?.description()}")
-        return child?.description
-    }
-
-    protected override fun runChild(child: JUnitOnRunner<T>?, notifier: RunNotifier?) {
-        println("+++-- Given: run On | ${child?.on?.description()}")
-        junitAction(describeChild(child)!!, notifier!!) {
-            given.run { child!!.run(notifier) }
-        }
-    }
-}
-
-public class JUnitClassRunner<T>(val specificationClass: Class<T>) : ParentRunner<JUnitGivenRunner<T>>(specificationClass) {
+public class JUnitClassRunner<T>(val specificationClass: Class<T>) : ParentRunner<Unit>(specificationClass) {
     private val suiteDescription = Description.createSuiteDescription(specificationClass)
 
-    override fun getChildren(): MutableList<JUnitGivenRunner<T>> = _children
+    val _spekRunResults: HashMap<Int, SpekResult> = HashMap()
 
-    val _children by lazy(LazyThreadSafetyMode.NONE) {
-        if (Spek::class.java.isAssignableFrom(specificationClass) && !specificationClass.isLocalClass) {
-            val spek = specificationClass.newInstance() as Spek
-            val result = arrayListOf<JUnitGivenRunner<T>>()
-            spek.listGiven().forEach { result.add(JUnitGivenRunner(specificationClass, it)) }
-            result
-        } else
-            arrayListOf()
-    }
-
-    protected override fun describeChild(child: JUnitGivenRunner<T>?): Description? {
-        println("+++ Suite: describe child | ${child?.given?.description()}")
-        return child?.description
-    }
-
-    protected override fun runChild(child: JUnitGivenRunner<T>?, notifier: RunNotifier?) {
-        println("+++ Suite: run Given | ${child?.given?.description()}")
-        junitAction(describeChild(child)!!, notifier!!) {
-            child!!.run(notifier)
+    val _description by lazy(LazyThreadSafetyMode.NONE) {
+        val suiteDesc = Description.createSuiteDescription(specificationClass)
+        val spek = specificationClass.newInstance() as Spek
+        spek.listGiven().forEach { givenSpek ->
+            val givenId = JUnitUniqueId.next()
+            val givenDesc = Description.createSuiteDescription(givenSpek.description(), givenId)
+            suiteDesc.addChild(givenDesc)
+            runSpek(givenId.hashCode(), _spekRunResults) {
+                givenSpek.listOn().forEach { onSpek ->
+                    val onId = JUnitUniqueId.next()
+                    val onDesc = Description.createSuiteDescription(onSpek.description(), onId)
+                    givenDesc.addChild(onDesc)
+                    runSpek(onId.hashCode(), _spekRunResults) {
+                        givenSpek.run {
+                            onSpek.run {
+                                onSpek.listIt().forEach { itSpek ->
+                                    val itId = JUnitUniqueId.next()
+                                    val itDesc = Description.createSuiteDescription(itSpek.description(), itId)
+                                    onDesc.addChild(itDesc)
+                                    runSpek(itId.hashCode(), _spekRunResults) { itSpek.run {} }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
+        suiteDesc
     }
+
+    override fun getDescription(): Description = _description
+
+    override fun run(notifier: RunNotifier?) {
+        evaluateResults(_description, notifier, _spekRunResults)
+    }
+
+    override fun getChildren(): MutableList<Unit> = ArrayList()
+
+    protected override fun describeChild(child: Unit?): Description? = null
+
+    protected override fun runChild(child: Unit?, notifier: RunNotifier?) {
+    }
+}
+
+fun evaluateChildren(desc: Description?, notifier: RunNotifier?) {
+
 }
