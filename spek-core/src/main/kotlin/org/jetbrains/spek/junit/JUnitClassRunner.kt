@@ -97,9 +97,7 @@ public class JUnitClassRunner<T>(val specificationClass: Class<T>) : ParentRunne
 
     override fun getDescription(): Description = _description
 
-    override fun run(notifier: RunNotifier?) {
-        evaluateResults(_description, notifier, _spekRunResults)
-    }
+    override fun run(notifier: RunNotifier?) = evaluateResults(_description, notifier, _spekRunResults)
 
     override fun getChildren(): MutableList<Unit> = ArrayList()
 
@@ -107,8 +105,4 @@ public class JUnitClassRunner<T>(val specificationClass: Class<T>) : ParentRunne
 
     protected override fun runChild(child: Unit?, notifier: RunNotifier?) {
     }
-}
-
-fun evaluateChildren(desc: Description?, notifier: RunNotifier?) {
-
 }
